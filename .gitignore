@@ -4,3 +4,7 @@ __pycache__/
 .env
 chroma_db/
 .DS_Store
+
+chroma_db/
+*.pdf
+.venv/
