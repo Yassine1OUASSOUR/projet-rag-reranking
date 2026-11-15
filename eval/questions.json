@@ -1,0 +1,71 @@
+[
+  {"question": "Quelle est la différence entre RAG-Sequence et RAG-Token ?",
+   "question_en": "What is the difference between the RAG-Sequence and RAG-Token models?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["uses the same retrieved document", "draw a different latent document"]},
+
+  {"question": "Quel modèle génère la réponse dans RAG ?",
+   "question_en": "Which model is used as the generator in RAG?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["any encoder-decoder", "BART-large", "400M parameters"]},
+
+  {"question": "Quelle architecture est utilisée pour le retriever ?",
+   "question_en": "Which architecture is used for the retriever component?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["bi-encoder architecture", "retrieval component", "is based on DPR"]},
+
+  {"question": "Comment trouve-t-on les k documents les plus probables ?",
+   "question_en": "How are the top-k documents with highest probability found?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["Maximum Inner Product Search", "MIPS index", "FAISS"]},
+
+  {"question": "Quel dump Wikipédia sert de base de connaissances et comment est-il découpé ?",
+   "question_en": "Which Wikipedia dump is the knowledge source and how is it split?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["December 2018", "100-word chunks", "21M documents"]},
+
+  {"question": "Quels jeux de données de question-réponse ouverte sont utilisés en plus de Natural Questions et TriviaQA ?",
+   "question_en": "Which open-domain QA datasets are used besides Natural Questions and TriviaQA?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["WebQuestions", "CuratedTrec"]},
+
+  {"question": "Peut-on mettre à jour les connaissances du modèle sans le réentraîner ?",
+   "question_en": "Can the model's knowledge be updated without retraining, by swapping the index?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["Index hot-swapping", "hot-swap", "December 2016"]},
+
+  {"question": "En quoi consiste la tâche de génération de questions Jeopardy ?",
+   "question_en": "What does the Jeopardy question generation task consist of?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["Jeopardy Question Generation", "answer entity"]},
+
+  {"question": "En quoi consiste la tâche de vérification de faits ?",
+   "question_en": "What does the fact verification task consist of?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["Fact Verification", "supported or refuted"]},
+
+  {"question": "Que sont la mémoire paramétrique et non paramétrique dans RAG ?",
+   "question_en": "What are the parametric and non-parametric memories in RAG?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["non-parametric memory", "dense vector index of Wikipedia"]},
+
+  {"question": "Quelle est la différence entre le décodage Thorough et Fast ?",
+   "question_en": "What is the difference between Thorough Decoding and Fast Decoding?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["Thorough Decoding", "Fast Decoding"]},
+
+  {"question": "Quels composants sont affinés pendant l'entraînement et lesquels restent figés ?",
+   "question_en": "Which components are fine-tuned during training and which are kept fixed?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["document encoder (and index) fixed", "only fine-tuning the query encoder"]},
+
+  {"question": "Quelle fonction de perte est utilisée pour entraîner RAG ?",
+   "question_en": "Which loss function is used to train RAG?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["negative marginal log-likelihood"]},
+
+  {"question": "Que montre l'ablation sur la récupération apprise ?",
+   "question_en": "What does the learned retrieval ablation show?",
+   "source": "2005.11401v4.pdf",
+   "keywords": ["Learned Retrieval", "retrieval mechanism is frozen"]}
+]

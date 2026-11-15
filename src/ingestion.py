@@ -1,58 +1,121 @@
-import os
+"""Pipeline d'ingestion : PDF -> nettoyage -> chunks -> embeddings -> ChromaDB.
+
+Usage :
+    python -m src.ingestion            # ajoute uniquement les PDF nouveaux ou modifiés
+    python -m src.ingestion --reset    # reconstruit toute la base
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import logging
+import re
 from pathlib import Path
-from langchain_community.document_loaders import PyPDFDirectoryLoader
+
+from langchain_chroma import Chroma
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
 
-DATA_DIR = Path("data")
-CHROMA_DIR = Path("chroma_db")
-# Utilisation d'un modèle multilingue performant pour le français
-EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
+from .config import SETTINGS
+from .embeddings import get_embeddings
 
-def main():
-    print(f"Recherche de PDF dans : {DATA_DIR.absolute()}")
-    
-    if not DATA_DIR.exists():
-        print(f"Erreur : Le dossier {DATA_DIR} n'existe pas.")
+log = logging.getLogger("ingestion")
+
+
+def file_hash(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def clean_text(text: str) -> str:
+    text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)   # mots coupés en fin de ligne
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def load_pdf(path: Path, digest: str) -> list[Document]:
+    pages = PyPDFLoader(str(path)).load()
+    docs = []
+    for page in pages:
+        content = clean_text(page.page_content)
+        if content:
+            docs.append(
+                Document(
+                    page_content=content,
+                    metadata={
+                        "source": path.name,
+                        "page": int(page.metadata.get("page", 0)) + 1,  # pages à partir de 1
+                        "file_hash": digest,
+                    },
+                )
+            )
+    return docs
+
+
+def split(docs: list[Document]) -> list[Document]:
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=SETTINGS.chunk_size,
+        chunk_overlap=SETTINGS.chunk_overlap,
+        add_start_index=True,
+    )
+    chunks = [c for c in splitter.split_documents(docs) if len(c.page_content) >= SETTINGS.min_chunk_chars]
+    for i, chunk in enumerate(chunks):
+        chunk.metadata["chunk"] = i
+    return chunks
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--reset", action="store_true", help="Reconstruit la base depuis zéro")
+    args = parser.parse_args()
+
+    pdfs = sorted(SETTINGS.data_dir.glob("*.pdf"))
+    if not pdfs:
+        log.error("Aucun PDF dans %s/", SETTINGS.data_dir)
         return
 
-    pdf_files = list(DATA_DIR.glob("*.pdf"))
-    print(f"Fichiers PDF trouvés : {[p.name for p in pdf_files]}")
-
-    if not pdf_files:
-        print("Aucun PDF trouvé ! Veuillez placer un PDF dans le dossier data/.")
-        return
-
-    print("1. Chargement des PDF depuis data...")
-    loader = PyPDFDirectoryLoader(str(DATA_DIR))
-    documents = loader.load()
-    print(f"   -> {len(documents)} pages chargées avec succès.")
-
-    print("2. Découpage en chunks (taille=1000, overlap=150)...")
-    # Chunks plus larges pour garder le contexte complet des articles et sanctions
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=150
+    store = Chroma(
+        collection_name=SETTINGS.collection,
+        embedding_function=get_embeddings(),
+        persist_directory=str(SETTINGS.chroma_dir),
+        collection_metadata={"hnsw:space": "cosine"},
     )
-    chunks = text_splitter.split_documents(documents)
-    print(f"   -> {len(chunks)} chunks générés.")
+    if args.reset:
+        store.delete_collection()
+        store = Chroma(
+            collection_name=SETTINGS.collection,
+            embedding_function=get_embeddings(),
+            persist_directory=str(SETTINGS.chroma_dir),
+            collection_metadata={"hnsw:space": "cosine"},
+        )
 
-    print(f"3. Initialisation du modèle d'embedding ({EMBEDDING_MODEL})...")
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    known = {m.get("file_hash") for m in store.get(include=["metadatas"])["metadatas"]}
 
-    print(f"4. Création de la base ChromaDB dans {CHROMA_DIR}...")
-    # Nettoyage préalable de l'ancienne base si elle existe
-    if CHROMA_DIR.exists():
-        import shutil
-        shutil.rmtree(CHROMA_DIR)
+    for pdf in pdfs:
+        digest = file_hash(pdf)
+        if digest in known:
+            log.info("= %s déjà indexé, ignoré", pdf.name)
+            continue
 
-    Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        persist_directory=str(CHROMA_DIR),
-    )
-    print("   -> Indexation terminée ! Le dossier chroma_db/ a été créé avec succès.")
+        stale = store.get(where={"source": pdf.name})["ids"]  # version précédente du fichier
+        if stale:
+            store.delete(ids=stale)
+            log.info("~ %s modifié : %d anciens chunks supprimés", pdf.name, len(stale))
+
+        chunks = split(load_pdf(pdf, digest))
+        ids = [f"{digest[:12]}-{c.metadata['chunk']}" for c in chunks]
+        for start in range(0, len(chunks), 64):
+            store.add_documents(chunks[start:start + 64], ids=ids[start:start + 64])
+        log.info("+ %s : %d chunks indexés", pdf.name, len(chunks))
+
+    log.info("Terminé : %d chunks au total.", len(store.get()["ids"]))
+
 
 if __name__ == "__main__":
     main()
